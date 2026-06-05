@@ -1,51 +1,97 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"log"
 	"os"
-	"time"
+	"os/signal"
+	"syscall"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 )
 
+type Item struct {
+	ProductID string  `json:"product_id"`
+	Quantity  int     `json:"quantity"`
+	Price     float64 `json:"price"`
+}
+
+type Order struct {
+	OrderID    string  `json:"order_id"`
+	UserID     string  `json:"user_id"`
+	Items      []Item  `json:"items"`
+	TotalPrice float64 `json:"total_price"`
+}
+
+const timeoutMs = 100
+
 func main() {
-	if len(os.Args) < 3 {
-		fmt.Println("usage: go run main.go <bootstrap-server> <topic>")
-		fmt.Println("example: go run main.go localhost:9094 orders")
-		os.Exit(1)
+	if len(os.Args) != 3 {
+		log.Fatalf("usage: %s <bootstrap-servers> <topic>\n", os.Args[0])
 	}
 
 	bootstrapServers := os.Args[1]
 	topic := os.Args[2]
 
-	c, err := kafka.NewConsumer(&kafka.ConfigMap{
+	consumer, err := kafka.NewConsumer(&kafka.ConfigMap{
 		"bootstrap.servers": bootstrapServers,
-		"group.id":          "myGroup",
+		"group.id":          "consumer_group_1",
 		"auto.offset.reset": "earliest",
 	})
 	if err != nil {
-		panic(err)
+		log.Fatalf("failed to create consumer: %v\n", err)
 	}
-	defer c.Close()
+	defer consumer.Close()
 
-	err = c.SubscribeTopics([]string{topic}, nil)
+	err = consumer.SubscribeTopics([]string{topic}, nil)
 	if err != nil {
-		panic(err)
+		log.Fatalf("failed to subscribe to topic: %v\n", err)
 	}
 
-	for {
-		msg, err := c.ReadMessage(time.Second)
+	sigchan := make(chan os.Signal, 1)
+	signal.Notify(sigchan, syscall.SIGINT, syscall.SIGTERM)
 
-		if err == nil {
-			fmt.Printf("Message on %s: %s\n", msg.TopicPartition, string(msg.Value))
-			continue
+	fmt.Printf("Consumer started. Topic: %s\n", topic)
+
+	run := true
+
+	for run {
+		select {
+		case sig := <-sigchan:
+			fmt.Printf("Got signal %v. Shutting down...\n", sig)
+			run = false
+
+		default:
+			event := consumer.Poll(timeoutMs)
+			if event == nil {
+				continue
+			}
+
+			switch e := event.(type) {
+			case *kafka.Message:
+				var order Order
+
+				err := json.Unmarshal(e.Value, &order)
+				if err != nil {
+					fmt.Printf("failed to unmarshal message: %v\n", err)
+					continue
+				}
+
+				fmt.Printf("Message on %s\n", e.TopicPartition)
+				fmt.Printf("key: %s\n", string(e.Key))
+				fmt.Printf("order: %+v\n", order)
+
+				if e.Headers != nil {
+					fmt.Printf("headers: %v\n", e.Headers)
+				}
+
+			case kafka.Error:
+				fmt.Fprintf(os.Stderr, "consumer error: %v\n", e)
+
+			default:
+				fmt.Printf("ignored event: %v\n", e)
+			}
 		}
-
-		kafkaErr, ok := err.(kafka.Error)
-		if ok && kafkaErr.IsTimeout() {
-			continue
-		}
-
-		fmt.Printf("Consumer error: %v\n", err)
 	}
 }
