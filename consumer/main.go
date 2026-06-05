@@ -1,3 +1,4 @@
+// main.go
 package main
 
 import (
@@ -18,6 +19,7 @@ type Item struct {
 }
 
 type Order struct {
+	Offset     int     `json:"offset"`
 	OrderID    string  `json:"order_id"`
 	UserID     string  `json:"user_id"`
 	Items      []Item  `json:"items"`
@@ -27,71 +29,79 @@ type Order struct {
 const timeoutMs = 100
 
 func main() {
-	if len(os.Args) != 3 {
-		log.Fatalf("usage: %s <bootstrap-servers> <topic>\n", os.Args[0])
+	if len(os.Args) < 4 {
+		log.Fatalf(
+			"Пример использования: %s <bootstrap-servers> <group> <topics..>\n",
+			os.Args[0],
+		)
 	}
 
 	bootstrapServers := os.Args[1]
-	topic := os.Args[2]
-
-	consumer, err := kafka.NewConsumer(&kafka.ConfigMap{
-		"bootstrap.servers": bootstrapServers,
-		"group.id":          "consumer_group_1",
-		"auto.offset.reset": "earliest",
-	})
-	if err != nil {
-		log.Fatalf("failed to create consumer: %v\n", err)
-	}
-	defer consumer.Close()
-
-	err = consumer.SubscribeTopics([]string{topic}, nil)
-	if err != nil {
-		log.Fatalf("failed to subscribe to topic: %v\n", err)
-	}
+	group := os.Args[2]
+	topics := os.Args[3:]
 
 	sigchan := make(chan os.Signal, 1)
 	signal.Notify(sigchan, syscall.SIGINT, syscall.SIGTERM)
 
-	fmt.Printf("Consumer started. Topic: %s\n", topic)
+	c, err := kafka.NewConsumer(&kafka.ConfigMap{
+		"bootstrap.servers":  bootstrapServers,
+		"group.id":           group,
+		"session.timeout.ms": 6000,
+		"enable.auto.commit": true,
+		"auto.offset.reset":  "earliest",
+	})
+	if err != nil {
+		log.Fatalf("Невозможно создать консьюмера: %s\n", err)
+	}
+
+	fmt.Printf("Консьюмер создан %v\n", c)
+
+	err = c.SubscribeTopics(topics, nil)
+	if err != nil {
+		log.Fatalf("Невозможно подписаться на топик: %s\n", err)
+	}
 
 	run := true
 
 	for run {
 		select {
 		case sig := <-sigchan:
-			fmt.Printf("Got signal %v. Shutting down...\n", sig)
+			fmt.Printf("Передан сигнал %v: приложение останавливается\n", sig)
 			run = false
 
 		default:
-			event := consumer.Poll(timeoutMs)
-			if event == nil {
+			ev := c.Poll(timeoutMs)
+			if ev == nil {
 				continue
 			}
 
-			switch e := event.(type) {
+			switch e := ev.(type) {
 			case *kafka.Message:
-				var order Order
+				value := Order{}
 
-				err := json.Unmarshal(e.Value, &order)
+				err := json.Unmarshal(e.Value, &value)
 				if err != nil {
-					fmt.Printf("failed to unmarshal message: %v\n", err)
-					continue
+					fmt.Printf("Ошибка десериализации: %s\n", err)
+				} else {
+					fmt.Printf(
+						"%% Получено сообщение в топик %s:\n%+v\n",
+						e.TopicPartition,
+						value,
+					)
 				}
 
-				fmt.Printf("Message on %s\n", e.TopicPartition)
-				fmt.Printf("key: %s\n", string(e.Key))
-				fmt.Printf("order: %+v\n", order)
-
 				if e.Headers != nil {
-					fmt.Printf("headers: %v\n", e.Headers)
+					fmt.Printf("%% Заголовки: %v\n", e.Headers)
 				}
 
 			case kafka.Error:
-				fmt.Fprintf(os.Stderr, "consumer error: %v\n", e)
+				fmt.Fprintf(os.Stderr, "%% Error: %v: %v\n", e.Code(), e)
 
 			default:
-				fmt.Printf("ignored event: %v\n", e)
+				fmt.Printf("Другие события %v\n", e)
 			}
 		}
 	}
+
+	c.Close()
 }
