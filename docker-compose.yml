@@ -74,6 +74,20 @@ services:
     volumes:
       - kafka_2_data:/bitnami/kafka
 
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.4.10
+    container_name: schema-registry
+    depends_on:
+      - kafka-0
+      - kafka-1
+      - kafka-2
+    ports:
+      - "8081:8081"
+    environment:
+      - SCHEMA_REGISTRY_HOST_NAME=schema-registry
+      - SCHEMA_REGISTRY_LISTENERS=http://0.0.0.0:8081
+      - SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS=PLAINTEXT://kafka-0:9092,PLAINTEXT://kafka-1:9092,PLAINTEXT://kafka-2:9092
+
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: kafka-ui
@@ -83,9 +97,11 @@ services:
       - kafka-0
       - kafka-1
       - kafka-2
+      - schema-registry
     environment:
       - KAFKA_CLUSTERS_0_NAME=local-kraft-cluster
       - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka-0:9092,kafka-1:9092,kafka-2:9092
+      - KAFKA_CLUSTERS_0_SCHEMAREGISTRY=http://schema-registry:8081
 
 volumes:
   kafka_0_data:
