@@ -19,7 +19,6 @@ type Item struct {
 }
 
 type Order struct {
-	Offset     int     `json:"offset"`
 	OrderID    string  `json:"order_id"`
 	UserID     string  `json:"user_id"`
 	Items      []Item  `json:"items"`
@@ -53,6 +52,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Невозможно создать консьюмера: %s\n", err)
 	}
+	defer c.Close()
 
 	fmt.Printf("Консьюмер создан %v\n", c)
 
@@ -77,31 +77,26 @@ func main() {
 
 			switch e := ev.(type) {
 			case *kafka.Message:
-				value := Order{}
+				var order Order
 
-				err := json.Unmarshal(e.Value, &value)
+				err := json.Unmarshal(e.Value, &order)
 				if err != nil {
 					fmt.Printf("Ошибка десериализации: %s\n", err)
-				} else {
-					fmt.Printf(
-						"%% Получено сообщение в топик %s:\n%+v\n",
-						e.TopicPartition,
-						value,
-					)
+					continue
 				}
 
+				fmt.Printf("Получено сообщение из %s\n", e.TopicPartition)
+				fmt.Printf("key: %s\n", string(e.Key))
+				fmt.Printf("offset: %v\n", e.TopicPartition.Offset)
+				fmt.Printf("order: %+v\n", order)
+
 				if e.Headers != nil {
-					fmt.Printf("%% Заголовки: %v\n", e.Headers)
+					fmt.Printf("headers: %v\n", e.Headers)
 				}
 
 			case kafka.Error:
-				fmt.Fprintf(os.Stderr, "%% Error: %v: %v\n", e.Code(), e)
-
-			default:
-				fmt.Printf("Другие события %v\n", e)
+				fmt.Fprintf(os.Stderr, "Ошибка Kafka: %v: %v\n", e.Code(), e)
 			}
 		}
 	}
-
-	c.Close()
 }
