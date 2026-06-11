@@ -1,81 +1,53 @@
 package main
 
 import (
-	"context"
-	"github.com/lovoo/goka"
-	"github.com/lovoo/goka/codec"
+	"encoding/json"
+	"fmt"
 	"log"
-	"math/rand/v2"
-	"os"
-	"os/signal"
-	"syscall"
-	"time"
 )
 
-var (
-	brokers             = []string{"localhost:9092"}
-	input   goka.Stream = "numbers-input"
-	output  goka.Stream = "squares-output"
-	group   goka.Group  = "square-group"
-)
+type User struct {
+	Name string `json:"name"`
+}
 
-func runEmitter() {
-	emitter, err := goka.NewEmitter(brokers, input, new(codec.Int64))
-	if err != nil {
-		log.Fatalf("Error creating emitter: %v", err)
+type UserCodec struct{}
+
+func (jc *UserCodec) Encode(value interface{}) ([]byte, error) {
+	user, ok := value.(User)
+	if !ok {
+		return nil, fmt.Errorf("unable to encode user: expected User, got %T", value)
 	}
-	defer emitter.Finish()
 
-	for {
-		time.Sleep(1 * time.Second)
+	return json.Marshal(user)
+}
 
-		num := rand.Int64N(1_000_001)
+func (jc *UserCodec) Decode(data []byte) (interface{}, error) {
+	var user User
 
-		err = emitter.EmitSync("key", num)
-		if err != nil {
-			log.Fatalf("Error emitting key: %v", err)
-		}
-
-		log.Printf("[emitter] Сообщение %d отправлено\n", num)
+	if err := json.Unmarshal(data, &user); err != nil {
+		return nil, err
 	}
+
+	return user, nil
 }
 
 func main() {
-	go runEmitter()
+	u := User{Name: "Test user"}
+	log.Printf("before encode = %+v\n", u)
 
-	squareFunc := func(ctx goka.Context, msg interface{}) {
-		log.Printf("[processor] Получено сообщение: key = %s, value = %v", ctx.Key(), msg)
+	jsonCodec := new(UserCodec)
 
-		if num, ok := msg.(int64); ok {
-			newNum := num * num
-			ctx.Emit(output, ctx.Key(), newNum)
-			log.Printf("[processor] Сообщение обработано: key = %s, value = %v", ctx.Key(), newNum)
-		}
-	}
-
-	g := goka.DefineGroup(group,
-		goka.Input(input, new(codec.Int64), squareFunc),
-		goka.Output(output, new(codec.Int64)))
-
-	p, err := goka.NewProcessor(brokers, g)
+	encoded, err := jsonCodec.Encode(u)
 	if err != nil {
-		log.Fatalf("Error creating processor: %v", err)
+		log.Fatal(err)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan bool)
-	go func() {
-		defer close(done)
-		if err = p.Run(ctx); err != nil {
-			log.Fatalf("Error running processor: %v", err)
-		} else {
-			log.Printf("Process shutdown cleanly")
-		}
-	}()
+	log.Printf("encoded = %s\n", encoded)
 
-	wait := make(chan os.Signal, 1)
-	signal.Notify(wait, syscall.SIGINT, syscall.SIGTERM)
-	<-wait
-	cancel()
-	<-done
+	decodedUser, err := jsonCodec.Decode(encoded)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	log.Printf("after decode = %+v\n", decodedUser)
 }
