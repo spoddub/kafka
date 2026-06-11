@@ -89,7 +89,7 @@ services:
       - SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS=PLAINTEXT://kafka-0:9092,PLAINTEXT://kafka-1:9092,PLAINTEXT://kafka-2:9092
 
   ksqldb-server:
-    image: confluentinc/ksqldb-server:latest
+    image: confluentinc/cp-ksqldb-server:7.4.10
     container_name: ksqldb-server
     depends_on:
       - kafka-0
@@ -108,7 +108,7 @@ services:
       - KSQL_KSQL_STREAMS_PRODUCER_ACKS=all
 
   ksqldb-cli:
-    image: confluentinc/ksqldb-cli:latest
+    image: confluentinc/cp-ksqldb-cli:7.4.10
     container_name: ksqldb-cli
     depends_on:
       - ksqldb-server
