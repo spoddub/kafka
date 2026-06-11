@@ -2,60 +2,60 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"github.com/lovoo/goka"
 	"github.com/lovoo/goka/codec"
 	"log"
+	"math/rand/v2"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 )
 
 var (
 	brokers             = []string{"localhost:9092"}
-	input   goka.Stream = "input"
-	output  goka.Stream = "output"
-	group   goka.Group  = "upper-case-group"
+	input   goka.Stream = "numbers-input"
+	output  goka.Stream = "squares-output"
+	group   goka.Group  = "square-group"
 )
 
 func runEmitter() {
-	emitter, err := goka.NewEmitter(brokers, input, new(codec.String))
+	emitter, err := goka.NewEmitter(brokers, input, new(codec.Int64))
 	if err != nil {
 		log.Fatalf("Error creating emitter: %v", err)
 	}
 	defer emitter.Finish()
 
-	var counter int
 	for {
 		time.Sleep(1 * time.Second)
-		err = emitter.EmitSync("key", fmt.Sprintf("Value #%d", counter))
+
+		num := rand.Int64N(1_000_001)
+
+		err = emitter.EmitSync("key", num)
 		if err != nil {
-			log.Fatalf("Error emitting value: %v", err)
+			log.Fatalf("Error emitting key: %v", err)
 		}
-		log.Printf("[emitter] Сообщение #%d отправлено", counter)
-		counter++
+
+		log.Printf("[emitter] Сообщение %d отправлено\n", num)
 	}
 }
 
 func main() {
 	go runEmitter()
 
-	upperCaseFunc := func(ctx goka.Context, msg interface{}) {
-		log.Printf("[processor] Получено сообщение: key = %s, value = %s", ctx.Key(), msg)
+	squareFunc := func(ctx goka.Context, msg interface{}) {
+		log.Printf("[processor] Получено сообщение: key = %s, value = %v", ctx.Key(), msg)
 
-		if strMsg, ok := msg.(string); ok {
-			upper := strings.ToUpper(strMsg)
-
-			ctx.Emit(output, ctx.Key(), upper)
-			log.Printf("[processor] Сообщение обработано: key = %s, value = %s", ctx.Key(), upper)
+		if num, ok := msg.(int64); ok {
+			newNum := num * num
+			ctx.Emit(output, ctx.Key(), newNum)
+			log.Printf("[processor] Сообщение обработано: key = %s, value = %v", ctx.Key(), newNum)
 		}
 	}
 
 	g := goka.DefineGroup(group,
-		goka.Input(input, new(codec.String), upperCaseFunc),
-		goka.Output(output, new(codec.String)))
+		goka.Input(input, new(codec.Int64), squareFunc),
+		goka.Output(output, new(codec.Int64)))
 
 	p, err := goka.NewProcessor(brokers, g)
 	if err != nil {
