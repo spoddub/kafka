@@ -5,7 +5,7 @@ x-kafka-common: &kafka-common
     KAFKA_ENABLE_KRAFT: yes
     ALLOW_PLAINTEXT_LISTENER: yes
 
-    KAFKA_KRAFT_CLUSTER_ID: abcdefghijklmnopqrstuv
+    KAFKA_KRAFT_CLUSTER_ID: practicum
 
     KAFKA_CFG_PROCESS_ROLES: broker,controller
     KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
@@ -128,7 +128,6 @@ services:
       CONNECT_INTERNAL_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
       CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: "false"
       CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
-      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
 
       CONNECT_PLUGIN_PATH: /usr/share/java,/etc/kafka-connect/jars
     volumes:

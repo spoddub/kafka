@@ -1,1 +1,1 @@
-FROM confluentinc/cp-server-connect-base:7.6.1
+FROM confluentinc/cp-kafka-connect:7.7.1
