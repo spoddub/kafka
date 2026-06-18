@@ -38,6 +38,7 @@ certs/**/*.pem
 certs/**/*.srl
 certs/**/*.jks
 certs/**/*.p12
+certs/**/*.pkcs12
 certs/**/*_creds
 
 # keep configs
