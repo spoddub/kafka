@@ -30,3 +30,16 @@ go.work.sum
 # Editor/IDE
 .idea/
 # .vscode/
+# SSL / PKI local artifacts
+certs/**/*.key
+certs/**/*.csr
+certs/**/*.crt
+certs/**/*.pem
+certs/**/*.srl
+certs/**/*.jks
+certs/**/*.p12
+certs/**/*_creds
+
+# keep configs
+!certs/**/*.cnf
+!certs/**/.gitkeep
