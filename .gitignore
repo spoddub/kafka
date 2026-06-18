@@ -39,6 +39,7 @@ certs/**/*.srl
 certs/**/*.jks
 certs/**/*.p12
 certs/**/*.pkcs12
+certs/**/*.jaas.conf
 certs/**/*_creds
 
 # keep configs
