@@ -11,14 +11,19 @@ import (
 func main() {
 	const (
 		bootstrapServers = "localhost:9093"
-		topic            = "test"
-		groupID          = "my-consumer-group"
+		topic            = "sasl-plain-topic"
+		groupID          = "my-sasl-consumer-group"
 		caLocation       = "certs/ca/ca.crt"
+		saslUsername     = "admin"
+		saslPassword     = "admin-secret"
 	)
 
 	config := &kafka.ConfigMap{
 		"bootstrap.servers":     bootstrapServers,
-		"security.protocol":     "SSL",
+		"security.protocol":     "SASL_SSL",
+		"sasl.mechanism":        "PLAIN",
+		"sasl.username":         saslUsername,
+		"sasl.password":         saslPassword,
 		"ssl.ca.location":       caLocation,
 		"broker.address.family": "v4",
 		"group.id":              groupID,

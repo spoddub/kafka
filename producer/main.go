@@ -18,13 +18,18 @@ func main() {
 	const (
 		bootstrapServers = "localhost:9093"
 		caLocation       = "certs/ca/ca.crt"
+		saslUsername     = "admin"
+		saslPassword     = "admin-secret"
 	)
 
-	topic := "test"
+	topic := "sasl-plain-topic"
 
 	config := &kafka.ConfigMap{
 		"bootstrap.servers":     bootstrapServers,
-		"security.protocol":     "SSL",
+		"security.protocol":     "SASL_SSL",
+		"sasl.mechanism":        "PLAIN",
+		"sasl.username":         saslUsername,
+		"sasl.password":         saslPassword,
 		"ssl.ca.location":       caLocation,
 		"broker.address.family": "v4",
 	}
@@ -37,7 +42,7 @@ func main() {
 	defer producer.Close()
 
 	value := User{
-		Name:           "First user",
+		Name:           "SASL user",
 		FavoriteNumber: 42,
 		FavoriteColor:  "blue",
 	}
