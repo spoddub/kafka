@@ -1,177 +1,175 @@
-version: "3.5"
 services:
-
-  x-kafka-common:
-    &kafka-common
-    image: bitnamilegacy/kafka:3.7
-    environment:
-      &kafka-common-env
-      KAFKA_ENABLE_KRAFT: yes
-      ALLOW_PLAINTEXT_LISTENER: yes
-      KAFKA_KRAFT_CLUSTER_ID: practicum
-      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT,PLAINTEXT:PLAINTEXT"
-      KAFKA_CFG_PROCESS_ROLES: broker,controller
-      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 0@kafka-0:9093,1@kafka-1:9093,2@kafka-2:9093
-      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: true
-    networks:
-      - proxynet
-
-  postgres:
-    image: debezium/postgres:16
-    hostname: postgres
-    container_name: postgres
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_USER: postgres-user
-      POSTGRES_PASSWORD: postgres-pw
-      POSTGRES_DB: customers
-    volumes:
-      - ./postgres/custom-config.conf:/etc/postgresql/postgresql.conf
-    command: postgres -c config_file=/etc/postgresql/postgresql.conf
-    networks:
-      - proxynet
-
-  kafka-0:
-    <<: *kafka-common
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.4
+    container_name: zookeeper
+    hostname: zookeeper
     restart: always
     ports:
-      - "127.0.0.1:9094:9094"
-    environment:
-      <<: *kafka-common-env
-      KAFKA_CFG_NODE_ID: 0
-      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
-      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka-0:9092,EXTERNAL://127.0.0.1:9094
+      - "2181:2181"
+    networks:
+      - custom_network
     volumes:
-      - kafka_0_data:/bitnami/kafka
+      - data-zookeeper-log:/var/lib/zookeeper/log
+      - data-zookeeper-data:/var/lib/zookeeper/data
+    environment:
+      ZOOKEEPER_SERVER_ID: "1"
+      ZOOKEEPER_CLIENT_PORT: "2181"
+      ZOOKEEPER_TICK_TIME: "2000"
+      ZOOKEEPER_INIT_LIMIT: "5"
+      ZOOKEEPER_SYNC_LIMIT: "2"
 
   kafka-1:
-    <<: *kafka-common
+    image: confluentinc/cp-kafka:7.4.4
+    container_name: kafka-1
+    hostname: kafka-1
     restart: always
-    ports:
-      - "127.0.0.1:9095:9095"
-    environment:
-      <<: *kafka-common-env
-      KAFKA_CFG_NODE_ID: 1
-      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9095
-      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka-1:9092,EXTERNAL://127.0.0.1:9095
-    volumes:
-      - kafka_1_data:/bitnami/kafka
-
-  kafka-2:
-    <<: *kafka-common
-    restart: always
-    ports:
-      - "127.0.0.1:9096:9096"
-    environment:
-      <<: *kafka-common-env
-      KAFKA_CFG_NODE_ID: 2
-      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9096
-      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka-2:9092,EXTERNAL://127.0.0.1:9096
-    volumes:
-      - kafka_2_data:/bitnami/kafka
-
-  schema-registry:
-    image: bitnamilegacy/schema-registry:7.6
-    ports:
-      - '8081:8081'
     depends_on:
-      - kafka-0
-      - kafka-1
-      - kafka-2
-    environment:
-      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
-      SCHEMA_REGISTRY_KAFKA_BROKERS: PLAINTEXT://kafka-0:9092,PLAINTEXT://kafka-1:9092,PLAINTEXT://kafka-2:9092
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+      - "29092:29092"
     networks:
-      - proxynet
+      - custom_network
+    volumes:
+      - data-kafka-1:/var/lib/kafka/data
+      - ./certs/kafka/kafka-1:/etc/kafka/secrets:ro
+    environment:
+      KAFKA_BROKER_ID: "1"
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
 
-  ui:
-    image: provectuslabs/kafka-ui:v0.7.0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_DELETE_TOPIC_ENABLE: "true"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
+
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,PLAINTEXT://0.0.0.0:9092,SSL://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka-1:29092,PLAINTEXT://localhost:9092,SSL://localhost:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,PLAINTEXT:PLAINTEXT,SSL:SSL
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+
+      KAFKA_SSL_KEYSTORE_FILENAME: kafka.kafka-1.keystore.pkcs12
+      KAFKA_SSL_KEYSTORE_CREDENTIALS: kafka-1_keystore_creds
+      KAFKA_SSL_KEY_CREDENTIALS: kafka-1_sslkey_creds
+      KAFKA_SSL_TRUSTSTORE_FILENAME: kafka.kafka-1.truststore.jks
+      KAFKA_SSL_TRUSTSTORE_CREDENTIALS: kafka-1_truststore_creds
+      KAFKA_SSL_KEYSTORE_TYPE: PKCS12
+      KAFKA_SSL_TRUSTSTORE_TYPE: JKS
+      KAFKA_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM: https
+
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    hostname: postgres
     restart: always
     ports:
-      - "127.0.0.1:8085:8080"
-    environment:
-      KAFKA_CLUSTERS_0_BOOTSTRAP_SERVERS: kafka-0:9092
-      KAFKA_CLUSTERS_0_NAME: kraft
-      cdSQLDBSERVER: http://ksqldb:8088
+      - "5432:5432"
     networks:
-      - proxynet
+      - custom_network
+    volumes:
+      - data-postgres:/var/lib/postgresql/data
+      - ./postgres/custom-config.conf:/etc/postgresql/custom-config.conf:ro
+    command: ["postgres", "-c", "config_file=/etc/postgresql/custom-config.conf"]
+    environment:
+      POSTGRES_DB: customers
+      POSTGRES_USER: postgres-user
+      POSTGRES_PASSWORD: postgres-pw
 
   kafka-connect:
     build:
       context: ./kafka-connect
+    container_name: kafka-connect
+    hostname: kafka-connect
+    restart: always
+    depends_on:
+      - kafka-1
+      - postgres
     ports:
       - "8083:8083"
-      - "9875:9875"
       - "9876:9876"
-    depends_on:
-      - kafka-0
-      - kafka-1
-      - kafka-2
-      - schema-registry
-      - postgres
-    environment:
-      CONNECT_BOOTSTRAP_SERVERS: kafka-0:9092
-      CONNECT_REST_PORT: 8083
-      CONNECT_GROUP_ID: 'kafka-connect'
-
-      CONNECT_REST_ADVERTISED_HOST_NAME: 'localhost'
-
-      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
-      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
-      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
-
-      CONNECT_CONFIG_STORAGE_TOPIC: 'connect-config-storage'
-      CONNECT_OFFSET_STORAGE_TOPIC: 'connect-offset-storage'
-      CONNECT_STATUS_STORAGE_TOPIC: 'connect-status-storage'
-
-      CONNECT_KEY_CONVERTER: "io.confluent.connect.avro.AvroConverter"
-      CONNECT_VALUE_CONVERTER: "io.confluent.connect.avro.AvroConverter"
-      CONNECT_INTERNAL_KEY_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
-      CONNECT_INTERNAL_VALUE_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
-
-      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: 'http://schema-registry:8081/'
-      CONNECT_KEY_CONVERTER_SCHEMA_REGISTRY_URL:  'http://schema-registry:8081/'
-      # Export JMX metrics to :9876/metrics for Prometheus
-      KAFKA_JMX_PORT: '9875'
-      KAFKA_OPTS: "-javaagent:/opt/jmx_prometheus_javaagent-0.15.0.jar=9876:/opt/kafka-connect.yml"
-      # Read connection password from file
-      CONNECT_CONFIG_PROVIDERS: "file"
-      CONNECT_CONFIG_PROVIDERS_FILE_CLASS: "org.apache.kafka.common.config.provider.FileConfigProvider"
-
-      CONNECT_PLUGIN_PATH: /usr/share/java,/etc/kafka-connect/jars
-    volumes:
-      - ./confluent-hub-components/:/etc/kafka-connect/jars
     networks:
-      - proxynet
+      - custom_network
+    volumes:
+      - ./confluent-hub-components:/usr/share/confluent-hub-components:ro
+      - ./kafka-connect/jmx_prometheus_javaagent-0.15.0.jar:/opt/jmx_prometheus_javaagent.jar:ro
+      - ./kafka-connect/kafka-connect.yml:/etc/jmx_exporter/kafka-connect.yml:ro
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: kafka-1:29092
+      CONNECT_REST_PORT: "8083"
+      CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
+      CONNECT_GROUP_ID: kafka-connect-group
+
+      CONNECT_CONFIG_STORAGE_TOPIC: kafka-connect-configs
+      CONNECT_OFFSET_STORAGE_TOPIC: kafka-connect-offsets
+      CONNECT_STATUS_STORAGE_TOPIC: kafka-connect-statuses
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: "1"
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: "1"
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: "1"
+
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: "false"
+      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+
+      CONNECT_PLUGIN_PATH: /usr/share/java,/usr/share/confluent-hub-components
+      KAFKA_OPTS: -javaagent:/opt/jmx_prometheus_javaagent.jar=9876:/etc/jmx_exporter/kafka-connect.yml
+
+  debezium-ui:
+    image: quay.io/debezium/debezium-ui:latest
+    container_name: debezium-ui
+    hostname: debezium-ui
+    restart: always
+    depends_on:
+      - kafka-connect
+    ports:
+      - "8080:8080"
+    networks:
+      - custom_network
+    environment:
+      KAFKA_CONNECT_URIS: http://kafka-connect:8083
 
   prometheus:
-    image: prom/prometheus:v2.30.3
-    ports:
-      - 9090:9090
-    volumes:
-      - ./prometheus:/etc/prometheus
-    command: --web.enable-lifecycle --config.file=/etc/prometheus/prometheus.yml
-    links:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    hostname: prometheus
+    restart: always
+    depends_on:
       - kafka-connect
+    ports:
+      - "9090:9090"
     networks:
-      - proxynet
+      - custom_network
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - data-prometheus:/prometheus
 
   grafana:
     build:
       context: ./grafana
+    container_name: grafana
+    hostname: grafana
+    restart: always
+    depends_on:
+      - prometheus
     ports:
-      - 3000:3000
+      - "3000:3000"
     networks:
-      - proxynet
-
-
-networks:
-  proxynet:
-    name: custom_network
+      - custom_network
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - data-grafana:/var/lib/grafana
 
 volumes:
-  kafka_0_data:
-  kafka_1_data:
-  kafka_2_data:
+  data-zookeeper-log:
+  data-zookeeper-data:
+  data-kafka-1:
+  data-postgres:
+  data-prometheus:
+  data-grafana:
+
+networks:
+  custom_network:
+    name: custom_network
